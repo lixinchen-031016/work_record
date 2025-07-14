@@ -285,7 +285,8 @@ with tab_main:
 
     # 工作记录管理
     st.subheader("工作记录管理")
-    tab1, tab2, tab3 = st.tabs(["添加记录", "查看/编辑记录", "数据统计"])
+    # 修改为4个tab
+    tab1, tab2, tab3, tab4 = st.tabs(["添加记录", "查看/编辑记录", "数据统计", "待办事项"])
 
     with tab1:
         # 添加新记录
@@ -416,6 +417,29 @@ with tab_main:
         else:
             st.info("暂无数据可供统计")
 
+    with tab4:
+        # 待办事项页面
+        st.subheader("待办工作列表")
+        db = get_db()
+        
+        # 获取所有未完成的工作
+        uncompleted_records = db_utils.get_uncompleted_records(db, date.today())
+        if uncompleted_records:
+            for record in uncompleted_records:
+                with st.container(border=True):
+                    cols = st.columns([4, 1])
+                    cols[0].markdown(f"""
+                    **工作类型**: {record.work_type}  
+                    **内容**: {record.work_content}  
+                    **截止日期**: {record.end_date}
+                    """)
+                    
+                    if cols[1].button("标记完成", key=f"complete_{record.id}"):
+                        db_utils.update_record(db, record.id, is_completed=1)
+                        st.rerun()
+        else:
+            st.success("当前没有待办工作")
+
 # Excel导出功能
 st.subheader("导出工作记录")
 export_start = st.date_input("起始日期", value=date.today() - timedelta(days=30))
@@ -455,6 +479,8 @@ if 'show_pending_records' in st.session_state and st.session_state.show_pending_
                 ]
                 st.rerun()
         st.session_state.show_pending_records = len(st.session_state.pending_records) > 0
+
+
 
 
 

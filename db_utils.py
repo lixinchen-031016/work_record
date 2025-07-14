@@ -54,11 +54,12 @@ def update_record(db, record_id, **kwargs):
     return None
 
 # 新增：获取未完成的工作记录
-def get_uncompleted_records(db, date):
-    return db.query(WorkRecord).filter(
-        WorkRecord.end_date == date,
-        WorkRecord.is_completed == 0
-    ).all()
+def get_uncompleted_records(db, date=None):
+    """获取未完成的工作记录，可按日期筛选"""
+    query = db.query(WorkRecord).filter(WorkRecord.is_completed == 0)
+    if date:
+        query = query.filter(WorkRecord.end_date <= date)
+    return query.order_by(WorkRecord.end_date.asc()).all()
 
 def delete_record(db, record_id):
     record = db.query(WorkRecord).filter(WorkRecord.id == record_id).first()
