@@ -17,3 +17,11 @@ class DutyPersonnel(Base):
     
     id = Column(Integer, primary_key=True)
     name = Column(String(50), nullable=False, unique=True)  # 值班人员姓名
+
+class User(Base):
+    __tablename__ = 'users'
+    
+    id = Column(Integer, primary_key=True)
+    username = Column(String(50), nullable=False, unique=True)  # 用户名
+    password = Column(String(255), nullable=False)            # 密码（加密存储）
+    last_login = Column(Date)                                 # 上次登录时间

@@ -1,8 +1,14 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from models import Base, WorkRecord, DutyPersonnel
+from models import Base, WorkRecord, DutyPersonnel, User
 import pandas as pd
-from datetime import datetime
+import bcrypt
+import jwt
+from datetime import datetime, timedelta
+
+# JWT配置
+SECRET_KEY = "your_secret_key"  # 实际应用中应从环境变量获取
+TOKEN_EXPIRATION = timedelta(minutes=30)
 
 # 数据库配置
 DATABASE_URI = "mysql+pymysql://root:lxc20031016@localhost/work_record_db"
@@ -98,3 +104,73 @@ def export_to_excel(db, start_date, end_date):
     
     df = pd.DataFrame(data)
     return df
+
+# 用户管理功能
+def create_user(db, username, password):
+    # 检查用户名是否已存在
+    if db.query(User).filter(User.username == username).first():
+        return None
+    
+    # 使用bcrypt加密密码
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    # 存储为字符串
+    hashed_password_str = hashed_password.decode('utf-8')
+    
+    new_user = User(
+        username=username,
+        password=hashed_password_str,
+        last_login=datetime.now().date()
+    )
+    db.add(new_user)
+    db.commit()
+    return new_user
+
+def verify_user(db, username, password):
+    user = db.query(User).filter(User.username == username).first()
+    if user and bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
+        # 更新最后登录时间
+        user.last_login = datetime.now().date()
+        db.commit()
+        return user
+    return None
+
+def get_user_by_username(db, username):
+    return db.query(User).filter(User.username == username).first()
+
+def update_password(db, username, new_password):
+    user = db.query(User).filter(User.username == username).first()
+    if user:
+        hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+        user.password = hashed_password.decode('utf-8')
+        db.commit()
+        return True
+    return False
+
+# 新增：获取所有用户
+def get_all_users(db):
+    return db.query(User).all()
+
+# 新增：删除用户
+def delete_user(db, username):
+    user = db.query(User).filter(User.username == username).first()
+    if user:
+        db.delete(user)
+        db.commit()
+        return True
+    return False
+
+def generate_jwt_token(username):
+    payload = {
+        'username': username,
+        'exp': datetime.utcnow() + TOKEN_EXPIRATION
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+
+def verify_jwt_token(token):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+        return payload['username']
+    except jwt.ExpiredSignatureError:
+        return None  # Token已过期
+    except jwt.InvalidTokenError:
+        return None  # 无效Token

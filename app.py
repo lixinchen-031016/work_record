@@ -5,17 +5,191 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from io import BytesIO
+import jwt
+import time
 
 # 初始化数据库
 db_utils.init_db()
 
 # 页面配置
 st.set_page_config(page_title="工作记录管理系统", layout="wide")
-st.title("工作记录管理系统")
 
 # 获取数据库会话
 def get_db():
     return next(db_utils.get_db_session())
+
+# 检查JWT并自动续期
+def check_auth():
+    if 'jwt_token' not in st.session_state:
+        return False
+    
+    # 验证当前Token
+    username = db_utils.verify_jwt_token(st.session_state.jwt_token)
+    
+    # Token无效或过期
+    if not username:
+        return False
+    
+    # 检查Token是否需要续期（剩余时间小于5分钟）
+    try:
+        payload = jwt.decode(
+            st.session_state.jwt_token, 
+            db_utils.SECRET_KEY, 
+            algorithms=['HS256'],
+            options={"verify_exp": False}  # 不验证过期时间
+        )
+        exp_time = payload['exp']
+        if exp_time - time.time() < 300:  # 剩余时间小于5分钟
+            # 生成新Token
+            st.session_state.jwt_token = db_utils.generate_jwt_token(username)
+            st.experimental_set_query_params(token=st.session_state.jwt_token)
+    except:
+        pass
+    
+    return True
+
+# 登录/注册页面
+if not check_auth():
+    st.title("工作记录管理系统 - 登录")
+    
+    tab_login, tab_register, tab_forgot = st.tabs(["登录", "注册", "找回密码"])
+    
+    with tab_login:
+        with st.form("login_form"):
+            username = st.text_input("用户名")
+            password = st.text_input("密码", type="password")
+            remember = st.checkbox("记住我")
+            
+            if st.form_submit_button("登录"):
+                db = get_db()
+                user = db_utils.verify_user(db, username, password)
+                if user:
+                    # 生成JWT Token
+                    token = db_utils.generate_jwt_token(username)
+                    st.session_state.jwt_token = token
+                    st.session_state.username = username
+                    st.experimental_set_query_params(token=token)
+                    st.success("登录成功！")
+                    st.rerun()
+                else:
+                    st.error("用户名或密码错误")
+    
+    with tab_register:
+        with st.form("register_form"):
+            new_username = st.text_input("用户名")
+            new_password = st.text_input("密码", type="password")
+            confirm_password = st.text_input("确认密码", type="password")
+            
+            if st.form_submit_button("注册"):
+                if new_password != confirm_password:
+                    st.error("两次输入的密码不一致")
+                else:
+                    db = get_db()
+                    user = db_utils.create_user(db, new_username, new_password)
+                    if user:
+                        st.success("注册成功！请登录")
+                    else:
+                        st.error("用户名已存在")
+    
+    with tab_forgot:
+        with st.form("forgot_form"):
+            forgot_username = st.text_input("用户名")
+            new_password = st.text_input("新密码", type="password")
+            confirm_password = st.text_input("确认新密码", type="password")
+            
+            if st.form_submit_button("重置密码"):
+                if new_password != confirm_password:
+                    st.error("两次输入的密码不一致")
+                else:
+                    db = get_db()
+                    if db_utils.update_password(db, forgot_username, new_password):
+                        st.success("密码已重置，请使用新密码登录")
+                    else:
+                        st.error("用户名不存在")
+    
+    st.stop()
+
+# 已登录状态显示主界面
+st.title(f"工作记录管理系统 - 欢迎 {st.session_state.username}")
+
+# 退出登录按钮
+if st.button("退出登录"):
+    st.session_state.pop('jwt_token', None)
+    st.session_state.pop('username', None)
+    st.experimental_set_query_params()
+    st.rerun()
+
+# 新增：用户管理功能
+with st.expander("用户管理"):
+    st.subheader("用户列表")
+    db = get_db()
+    users = db_utils.get_all_users(db)
+    
+    if users:
+        # 显示用户表格
+        user_df = pd.DataFrame([{
+            "ID": u.id,
+            "用户名": u.username,
+            "上次登录": u.last_login
+        } for u in users])
+        st.dataframe(user_df)
+    else:
+        st.warning("暂无用户")
+    
+    # 添加新用户
+    st.subheader("添加用户")
+    with st.form("add_user_form"):
+        new_username = st.text_input("用户名")
+        new_password = st.text_input("密码", type="password")
+        confirm_password = st.text_input("确认密码", type="password")
+        
+        if st.form_submit_button("添加"):
+            if new_password != confirm_password:
+                st.error("两次输入的密码不一致")
+            else:
+                db = get_db()
+                user = db_utils.create_user(db, new_username, new_password)
+                if user:
+                    st.success(f"用户 {new_username} 添加成功")
+                    st.rerun()
+                else:
+                    st.error("用户名已存在")
+    
+    # 修改密码
+    st.subheader("修改密码")
+    if users:
+        usernames = [u.username for u in users]
+        selected_user = st.selectbox("选择用户", usernames)
+        with st.form("change_password_form"):
+            new_password = st.text_input("新密码", type="password")
+            confirm_password = st.text_input("确认新密码", type="password")
+            
+            if st.form_submit_button("修改"):
+                if new_password != confirm_password:
+                    st.error("两次输入的密码不一致")
+                else:
+                    db = get_db()
+                    if db_utils.update_password(db, selected_user, new_password):
+                        st.success("密码已更新")
+                        st.rerun()
+                    else:
+                        st.error("更新失败")
+    else:
+        st.info("没有用户可修改")
+    
+    # 删除用户
+    st.subheader("删除用户")
+    if users:
+        del_username = st.selectbox("选择要删除的用户", usernames, key="del_user_select")
+        if st.button("删除用户"):
+            db = get_db()
+            if db_utils.delete_user(db, del_username):
+                st.success(f"用户 {del_username} 已删除")
+                st.rerun()
+            else:
+                st.error("删除失败")
+    else:
+        st.info("没有用户可删除")
 
 # 值班人员管理
 with st.expander("值班人员管理"):
