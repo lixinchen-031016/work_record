@@ -2,16 +2,14 @@ import streamlit as st
 from datetime import date, timedelta
 import db_utils
 import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
+import plotly.express as px  # 替换matplotlib为Plotly
 from io import BytesIO
 import jwt
 import time
 
 # 初始化数据库
 db_utils.init_db()
-plt.rcParams['font.sans-serif'] = ['PingFang HK']  # 或其他你喜欢的中文字体
-plt.rcParams['axes.unicode_minus'] = False
+
 # 页面配置
 st.set_page_config(page_title="工作记录管理系统", layout="wide")
 
@@ -75,9 +73,10 @@ def check_auth():
 
 # 登录/注册页面
 if not check_auth():
-    st.title("工作记录管理系统 - 登录")
+    # 添加新的标题显示方式
+    st.markdown("## 📊 工作记录管理系统 - 登录")
     
-    tab_login, tab_register, tab_forgot = st.tabs(["登录", "注册", "找回密码"])
+    tab_login, tab_register, tab_forgot = st.tabs(["🔐 登录", "📝 注册", "🔑 找回密码"])
     
     with tab_login:
         with st.form("login_form"):
@@ -94,8 +93,18 @@ if not check_auth():
                     st.session_state.jwt_token = token
                     st.session_state.username = username
                     st.query_params["token"] = token
+                    
+                    # 修改: 使用新方法获取所有未完成记录（不限定日期）
+                    uncompleted = db_utils.get_uncompleted_records(db)  # 删除日期参数
+                    if uncompleted:
+                        st.session_state.pending_records = uncompleted
+                        st.session_state.show_pending_records = True
+                        
+                        # 添加调试信息
+                        st.toast("⚠️ 检测到未完成工作，请及时处理！", icon='⚠️')
+                    
                     st.success("登录成功！")
-                    st.rerun()  # 使用rerun确保页面完全刷新
+                    st.rerun()
                 else:
                     st.error("用户名或密码错误")
     
@@ -137,15 +146,30 @@ if not check_auth():
 # 主界面重构
 st.title(f"工作记录管理系统 - 欢迎 {st.session_state.username}")
 
-# 退出登录按钮
-if st.button("退出登录"):
+# 退出登录按钮（添加图标和样式优化）
+st.markdown("""
+<style>
+    .logout-button {
+        background: linear-gradient(45deg, #ff6b6b, #ff8e53);
+        color: white;
+        border-radius: 10px;
+        padding: 8px 15px;
+        font-weight: bold;
+    }
+    .logout-button:hover {
+        transform: scale(1.05);
+    }
+</style>
+""", unsafe_allow_html=True)
+
+if st.button("🚪 退出登录", key="logout_button", help="点击退出系统", use_container_width=True):
     st.session_state.pop('jwt_token', None)
     st.session_state.pop('username', None)
     st.query_params.clear()  # 修改为使用query_params.clear()
     st.rerun()
 
 # 新增系统管理页面
-tab_main, tab_admin = st.tabs(["工作记录", "系统管理"])
+tab_main, tab_admin = st.tabs(["📊 工作记录", "⚙️ 系统管理"])
 
 with tab_admin:
     # 用户管理
@@ -258,13 +282,26 @@ with tab_admin:
 
 # 主工作记录页面
 with tab_main:
-    # 显示今日值班人员
-    st.subheader("今日值班人员")
+    # 值班人员显示优化
+    st.markdown("### 📅 今日值班人员")
     db = get_db()
     today_duty = db_utils.get_today_duty_rotation(db)
     
+    # 使用卡片式布局显示值班信息
     if today_duty:
-        st.success(f"今日值班人员: {today_duty[0]}")
+        st.markdown(f"""
+        <div style="
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            font-size: 1.2em;
+            color: #1f2937;
+        ">
+            👤 当前值班人员: <strong>{today_duty[0]}</strong>
+        </div>
+        """, unsafe_allow_html=True)
         
         # 修改今日值班人员
         with st.expander("修改"):
@@ -284,9 +321,8 @@ with tab_main:
         st.warning("请先添加值班人员")
 
     # 工作记录管理
-    st.subheader("工作记录管理")
-    # 修改为4个tab
-    tab1, tab2, tab3, tab4 = st.tabs(["添加记录", "查看/编辑记录", "数据统计", "待办事项"])
+    st.markdown("### 📝 工作记录管理")
+    tab1, tab2, tab3, tab4 = st.tabs(["➕ 添加记录", "🔍 查看/编辑记录", "📈 数据统计", "📋 待办事项"])
 
     with tab1:
         # 添加新记录
@@ -309,11 +345,22 @@ with tab_main:
                     st.error("请填写完整信息且结束日期不能早于开始日期")
 
     with tab2:
-        # 查看和编辑记录
         db = get_db()
         records = db_utils.get_records(db)
         
         if records:
+            # 分页功能实现
+            PAGE_SIZE = 10
+            total_pages = (len(records) + PAGE_SIZE - 1) // PAGE_SIZE
+            
+            col1, col2 = st.columns([3, 1])
+            with col2:
+                page = st.number_input("页码", min_value=1, max_value=total_pages, value=1)
+            
+            start_idx = (page - 1) * PAGE_SIZE
+            end_idx = min(start_idx + PAGE_SIZE, len(records))
+            current_records = records[start_idx:end_idx]
+            
             # 显示记录表格 - 增加完成状态列
             df = pd.DataFrame([{
                 "ID": r.id,
@@ -322,10 +369,13 @@ with tab_main:
                 "工作内容": r.work_content,
                 "开始日期": r.start_date,
                 "结束日期": r.end_date,
-                "已完成": "是" if r.is_completed else "否"  # 新增
-            } for r in records])
+                "已完成": "✅ 是" if r.is_completed else "❌ 否"
+            } for r in current_records])
             
-            st.dataframe(df)
+            st.dataframe(df, use_container_width=True)
+            
+            # 分页导航
+            st.markdown(f"第 {page} 页 / 共 {total_pages} 页")
             
             # 编辑记录
             record_id = st.number_input("输入要编辑的记录ID", min_value=1)
@@ -338,7 +388,7 @@ with tab_main:
                         new_work_content = st.text_area("工作内容", value=record.work_content)
                         new_start = st.date_input("开始日期", value=record.start_date)
                         new_end = st.date_input("结束日期", value=record.end_date)
-                        is_completed = st.checkbox("已完成", value=bool(record.is_completed))  # 新增
+                        is_completed = st.checkbox("已完成", value=bool(record.is_completed))
                         
                         if st.form_submit_button("更新记录"):
                             if new_start <= new_end:
@@ -351,7 +401,7 @@ with tab_main:
                                     work_content=new_work_content,
                                     start_date=new_start,
                                     end_date=new_end,
-                                    is_completed=1 if is_completed else 0  # 新增
+                                    is_completed=1 if is_completed else 0
                                 )
                                 st.success("记录更新成功!")
                                 st.rerun()
@@ -374,48 +424,81 @@ with tab_main:
             st.info("暂无工作记录")
 
     with tab3:
-        # 数据统计和可视化
         db = get_db()
         records = db_utils.get_records(db)
         
         if records:
-            # 按工作类型统计
-            st.subheader("工作类型分布")
+            # 使用Plotly生成交互式图表
+            st.markdown("#### 📊 工作类型分布")
             work_types = [r.work_type for r in records]
             type_counts = pd.Series(work_types).value_counts()
             
-            fig1, ax1 = plt.subplots()
-            ax1.pie(type_counts, labels=type_counts.index, autopct='%1.1f%%')
-            st.pyplot(fig1)
+            fig1 = px.pie(
+                values=type_counts.values, 
+                names=type_counts.index,
+                color_discrete_sequence=px.colors.qualitative.Pastel
+            )
+            fig1.update_traces(textposition='inside', textinfo='percent+label')
+            st.plotly_chart(fig1, use_container_width=True)
             
-            # 按记录人统计
-            st.subheader("记录人工作统计")
+            st.markdown("#### 📈 记录人工作统计")
             recorders = [r.recorder for r in records]
             recorder_counts = pd.Series(recorders).value_counts()
             
-            fig2, ax2 = plt.subplots(figsize=(10, 4))
-            ax2.bar(recorder_counts.index, recorder_counts.values)
-            plt.xticks(rotation=45)
-            st.pyplot(fig2)
+            fig2 = px.bar(
+                x=recorder_counts.index, 
+                y=recorder_counts.values,
+                color_discrete_sequence=['#636efa']
+            )
+            fig2.update_layout(
+                xaxis_title="记录人",
+                yaxis_title="记录数量",
+                hovermode="x unified"
+            )
+            st.plotly_chart(fig2, use_container_width=True)
             
-            # 时间趋势分析
-            st.subheader("工作记录时间分布")
+            st.markdown("#### 📅 时间分布趋势")
             df = pd.DataFrame([{
                 "date": r.start_date,
                 "count": 1
             } for r in records])
             
             if not df.empty:
+                # 数据预处理 - 新增完整时间序列支持
                 df['date'] = pd.to_datetime(df['date'])
-                df = df.set_index('date').resample('W').count()
                 
-                fig3, ax3 = plt.subplots(figsize=(10, 4))
-                ax3.plot(df.index, df['count'], marker='o')
-                ax3.set_xlabel("日期")
-                ax3.set_ylabel("记录数量")
-                st.pyplot(fig3)
-        else:
-            st.info("暂无数据可供统计")
+                # 使用ISO周标准（周一作为周起始）
+                weekly = df.set_index('date').resample('W-MON').count()
+                
+                # 创建完整日期范围索引并补全数据
+                full_date_range = pd.date_range(
+                    start=weekly.index.min() if not weekly.empty else df['date'].min(),
+                    end=weekly.index.max() if not weekly.empty else df['date'].max(),
+                    freq='W-MON'
+                )
+                weekly = weekly.reindex(full_date_range, fill_value=0).rename_axis('week_end')
+                
+                # 创建带滚动选择器的交互图表
+                fig3 = px.line(
+                    weekly.reset_index(),
+                    x='week_end',  # 使用明确的周结束日期字段
+                    y='count',
+                    title='每周工作记录数量',
+                    markers=True,  # 替换mode参数为markers参数
+                    color_discrete_sequence=['#00cc96']
+                )
+                
+                # 视觉优化配置
+                fig3.update_layout(
+                    xaxis_title="周结束日期",
+                    yaxis_title="记录数量",
+                    hovermode="x unified",
+                    xaxis_rangeslider_visible=True,  # 添加滚动时间选择器
+                    showlegend=False  # 移除冗余图例
+                )
+                fig3.update_xaxes(tickformat="%Y-%m-%d")
+                
+                st.plotly_chart(fig3, use_container_width=True)
 
     with tab4:
         # 待办事项页面
@@ -441,11 +524,14 @@ with tab_main:
             st.success("当前没有待办工作")
 
 # Excel导出功能
-st.subheader("导出工作记录")
-export_start = st.date_input("起始日期", value=date.today() - timedelta(days=30))
-export_end = st.date_input("结束日期", value=date.today())
+st.markdown("### 📦 导出工作记录")
+col1, col2 = st.columns(2)
+with col1:
+    export_start = st.date_input("起始日期", value=date.today() - timedelta(days=30))
+with col2:
+    export_end = st.date_input("结束日期", value=date.today())
 
-if st.button("导出为Excel"):
+if st.button("📥 导出为Excel", use_container_width=True):
     db = get_db()
     df = db_utils.export_to_excel(db, export_start, export_end)
     
@@ -466,21 +552,42 @@ if st.button("导出为Excel"):
     else:
         st.warning("所选时间段内没有记录")
 
-# 显示未完成的工作提醒
-if 'show_pending_records' in st.session_state and st.session_state.show_pending_records:
-    with st.expander("⚠️ 前一天未完成的工作"):
-        for record in st.session_state.pending_records:
-            st.write(f"工作类型: {record.work_type}, 内容: {record.work_content}")
-            if st.button(f"标记为已完成", key=f"complete_{record.id}"):
-                db = get_db()
-                db_utils.update_record(db, record.id, is_completed=1)
-                st.session_state.pending_records = [
-                    r for r in st.session_state.pending_records if r.id != record.id
-                ]
-                st.rerun()
-        st.session_state.show_pending_records = len(st.session_state.pending_records) > 0
-
-
-
+# 在侧边栏顶部显示未完成工作提醒
+with st.sidebar:
+    # 添加: 强化提醒条件判断
+    if 'show_pending_records' in st.session_state and st.session_state.show_pending_records:
+        st.markdown("### ⚠️ 待处理工作提醒")
+        
+        # 获取最新未完成记录（防止数据陈旧）
+        db = get_db()
+        current_pending = db_utils.get_uncompleted_records(db)
+        
+        if current_pending:
+            for record in current_pending:
+                with st.container():
+                    st.markdown(f"""
+                    <div style="
+                        padding: 10px;
+                        background-color: #fff3cd;
+                        border-radius: 5px;
+                        margin-bottom: 10px;
+                        border-left: 4px solid #ffc107;
+                    ">
+                        <strong>工作类型:</strong> {record.work_type}<br>
+                        <strong>内容:</strong> {record.work_content}<br>
+                        <strong>截止日期:</strong> {record.end_date}
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if st.button(f"✅ 标记为已完成", key=f"complete_{record.id}", use_container_width=True):
+                        db = get_db()
+                        db_utils.update_record(db, record.id, is_completed=1)
+                        st.session_state.pending_records = [
+                            r for r in st.session_state.pending_records if r.id != record.id
+                        ]
+                        st.rerun()
+                        st.toast(f"记录 {record.id} 已标记为完成", icon='✅')
+        else:
+            st.info("暂无待处理工作")
 
 
