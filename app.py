@@ -146,6 +146,55 @@ if not check_auth():
 # 主界面重构
 st.title(f"工作记录管理系统 - 欢迎 {st.session_state.username}")
 
+# 添加全局样式优化
+st.markdown("""
+<style>
+    /* 卡片式容器样式 */
+    .card {
+        padding: 1.5rem;
+        border-radius: 1rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        background-color: #ffffff;
+        margin: 1rem 0;
+        transition: transform 0.2s ease;
+    }
+    .card:hover {
+        transform: translateY(-5px);
+    }
+    
+    /* 增强型按钮样式 */
+    .stButton button {
+        border-radius: 0.75rem;
+        padding: 0.6rem 1.2rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        background: linear-gradient(45deg, #4f46e5, #6366f1);
+        color: white;
+        border: none;
+        transition: all 0.3s ease;
+    }
+    .stButton button:hover {
+        transform: scale(1.02);
+        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+    }
+    
+    /* 数据表格样式优化 */
+    .stDataFrame {
+        border-radius: 0.75rem;
+        overflow: hidden;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+    
+    /* 日期选择器样式 */
+    .stDateInput input {
+        border-radius: 0.75rem;
+        padding: 0.5rem 1rem;
+        border: 1px solid #e5e7eb;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # 退出登录按钮（添加图标和样式优化）
 st.markdown("""
 <style>
@@ -280,31 +329,28 @@ with tab_admin:
         else:
             st.warning("暂无值班人员，请先添加")
 
-# 主工作记录页面
+# 主工作记录页面优化布局
 with tab_main:
-    # 值班人员显示优化
+    # 值班人员显示优化为卡片式布局
     st.markdown("### 📅 今日值班人员")
     db = get_db()
     today_duty = db_utils.get_today_duty_rotation(db)
     
-    # 使用卡片式布局显示值班信息
     if today_duty:
         st.markdown(f"""
-        <div style="
-            padding: 20px;
-            background-color: #f8f9fa;
-            border-radius: 10px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-            font-size: 1.2em;
-            color: #1f2937;
-        ">
-            👤 当前值班人员: <strong>{today_duty[0]}</strong>
+        <div class="card">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <div style="font-size: 2rem;">👤</div>
+                <div>
+                    <h3 style="margin: 0; font-size: 1.2rem; color: #4b5563;">当前值班人员</h3>
+                    <p style="margin: 0.25rem 0 0 0; font-size: 1.5rem; font-weight: 600; color: #1f2937;">{today_duty[0]}</p>
+                </div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
         
-        # 修改今日值班人员
-        with st.expander("修改"):
+        # 修改表单优化
+        with st.expander("🔧 修改值班人员"):
             with st.form("edit_duty_form"):
                 new_duty = st.selectbox(
                     "选择值班人员",
@@ -320,12 +366,11 @@ with tab_main:
     else:
         st.warning("请先添加值班人员")
 
-    # 工作记录管理
+    # 工作记录管理优化为卡片布局
     st.markdown("### 📝 工作记录管理")
     tab1, tab2, tab3, tab4 = st.tabs(["➕ 添加记录", "🔍 查看/编辑记录", "📈 数据统计", "📋 待办事项"])
 
     with tab1:
-        # 添加新记录
         with st.form("add_record_form"):
             db = get_db()
             today_duty = db_utils.get_today_duty_rotation(db)
@@ -349,19 +394,16 @@ with tab_main:
         records = db_utils.get_records(db)
         
         if records:
-            # 分页功能实现
-            PAGE_SIZE = 10
-            total_pages = (len(records) + PAGE_SIZE - 1) // PAGE_SIZE
-            
+            # 分页控件优化
             col1, col2 = st.columns([3, 1])
             with col2:
-                page = st.number_input("页码", min_value=1, max_value=total_pages, value=1)
+                # 添加分页参数定义
+                page_size = 10  # 每页显示记录数
+                total_pages = (len(records) + page_size - 1) // page_size  # 计算总页数
+                page = st.number_input("页码", min_value=1, max_value=total_pages, value=1, key="record_page")
             
-            start_idx = (page - 1) * PAGE_SIZE
-            end_idx = min(start_idx + PAGE_SIZE, len(records))
-            current_records = records[start_idx:end_idx]
-            
-            # 显示记录表格 - 增加完成状态列
+            # 表格容器优化
+            # 添加df定义 - 修复NameError的关键修改
             df = pd.DataFrame([{
                 "ID": r.id,
                 "记录人": r.recorder,
@@ -369,15 +411,15 @@ with tab_main:
                 "工作内容": r.work_content,
                 "开始日期": r.start_date,
                 "结束日期": r.end_date,
-                "已完成": "✅ 是" if r.is_completed else "❌ 否"
-            } for r in current_records])
+                "是否完成": "是" if r.is_completed else "否"
+            } for r in records])
             
+            st.markdown('<div class="card">', unsafe_allow_html=True)
             st.dataframe(df, use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
             
-            # 分页导航
-            st.markdown(f"第 {page} 页 / 共 {total_pages} 页")
-            
-            # 编辑记录
+            # 编辑和删除区域优化
+            st.markdown("#### ✏️ 编辑记录")
             record_id = st.number_input("输入要编辑的记录ID", min_value=1)
             if record_id:
                 record = next((r for r in records if r.id == record_id), None)
@@ -501,8 +543,8 @@ with tab_main:
                 st.plotly_chart(fig3, use_container_width=True)
 
     with tab4:
-        # 待办事项页面
-        st.subheader("待办工作列表")
+        # 待办事项优化
+        st.markdown('<div class="card">', unsafe_allow_html=True)
         db = get_db()
         
         # 获取所有未完成的工作
@@ -523,7 +565,7 @@ with tab_main:
         else:
             st.success("当前没有待办工作")
 
-# Excel导出功能
+# Excel导出功能优化
 st.markdown("### 📦 导出工作记录")
 col1, col2 = st.columns(2)
 with col1:
@@ -552,7 +594,7 @@ if st.button("📥 导出为Excel", use_container_width=True):
     else:
         st.warning("所选时间段内没有记录")
 
-# 在侧边栏顶部显示未完成工作提醒
+# 侧边栏提醒优化
 with st.sidebar:
     # 添加: 强化提醒条件判断
     if 'show_pending_records' in st.session_state and st.session_state.show_pending_records:
@@ -564,30 +606,33 @@ with st.sidebar:
         
         if current_pending:
             for record in current_pending:
-                with st.container():
-                    st.markdown(f"""
-                    <div style="
-                        padding: 10px;
-                        background-color: #fff3cd;
-                        border-radius: 5px;
-                        margin-bottom: 10px;
-                        border-left: 4px solid #ffc107;
-                    ">
-                        <strong>工作类型:</strong> {record.work_type}<br>
-                        <strong>内容:</strong> {record.work_content}<br>
-                        <strong>截止日期:</strong> {record.end_date}
+                st.markdown(f"""
+                <div class="card" style="background-color: #fef9c3; border-left: 4px solid #eab308;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong>📌 {record.work_type}</strong><br>
+                            <small>截止: {record.end_date}</small>
+                        </div>
+                        <div style="font-size: 1.2rem;">❗</div>
                     </div>
-                    """, unsafe_allow_html=True)
+                </div>
+                """, unsafe_allow_html=True)
                     
-                    if st.button(f"✅ 标记为已完成", key=f"complete_{record.id}", use_container_width=True):
+                if st.button(f"✅ 标记为已完成", key=f"complete_{record.id}", use_container_width=True):
                         db = get_db()
                         db_utils.update_record(db, record.id, is_completed=1)
                         st.session_state.pending_records = [
                             r for r in st.session_state.pending_records if r.id != record.id
                         ]
-                        st.rerun()
                         st.toast(f"记录 {record.id} 已标记为完成", icon='✅')
+                        st.rerun()
         else:
             st.info("暂无待处理工作")
+
+
+
+
+
+
 
 
