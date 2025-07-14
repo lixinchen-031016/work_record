@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from models import Base, WorkRecord, DutyPersonnel, User
+from models import Base, WorkRecord, DutyPersonnel, User, DailyDuty
 import pandas as pd
 import bcrypt
 import jwt
@@ -32,9 +32,10 @@ def create_record(db, recorder, work_type, work_content, start_date, end_date):
     new_record = WorkRecord(
         recorder=recorder,
         work_type=work_type,
-        work_content=work_content,  # 新增参数
+        work_content=work_content,
         start_date=start_date,
-        end_date=end_date
+        end_date=end_date,
+        is_completed=0  # 新增：默认未完成
     )
     db.add(new_record)
     db.commit()
@@ -51,6 +52,13 @@ def update_record(db, record_id, **kwargs):
         db.commit()
         return record
     return None
+
+# 新增：获取未完成的工作记录
+def get_uncompleted_records(db, date):
+    return db.query(WorkRecord).filter(
+        WorkRecord.end_date == date,
+        WorkRecord.is_completed == 0
+    ).all()
 
 def delete_record(db, record_id):
     record = db.query(WorkRecord).filter(WorkRecord.id == record_id).first()
@@ -79,18 +87,40 @@ def get_all_duty_personnel(db):
     return [person.name for person in db.query(DutyPersonnel).all()]
 
 def get_today_duty_rotation(db):
-    """每天轮换4名值班人员"""
+    """每天只有一名值班人员，如果已存在今日值班人员则返回保存的值"""
+    today = datetime.now().date()
+    
+    # 检查是否有保存的今日值班人员
+    saved_duty = db.query(DailyDuty).filter(DailyDuty.date == today).first()
+    if saved_duty and saved_duty.personnel:
+        return [saved_duty.personnel]
+    
+    # 无保存则自动轮换
     all_personnel = get_all_duty_personnel(db)
     if not all_personnel:
         return []
     
-    # 基于当前日期计算轮换索引
-    today = datetime.now().date()
     day_of_year = today.timetuple().tm_yday
-    start_index = (day_of_year * 4) % len(all_personnel)
+    selected_index = day_of_year % len(all_personnel)
     
-    # 循环获取4名值班人员
-    return [all_personnel[(start_index + i) % len(all_personnel)] for i in range(4)]
+    return [all_personnel[selected_index]]
+
+def save_today_duty(db, personnel_list):
+    """保存今日值班人员(只保存第一个)"""
+    today = datetime.now().date()
+    if not personnel_list:
+        return False
+    
+    # 检查是否已有今日记录
+    existing = db.query(DailyDuty).filter(DailyDuty.date == today).first()
+    if existing:
+        existing.personnel = personnel_list[0]
+    else:
+        new_duty = DailyDuty(date=today, personnel=personnel_list[0])
+        db.add(new_duty)
+    
+    db.commit()
+    return True
 
 # 值班人员管理 - 新增编辑功能
 def update_duty_person(db, old_name, new_name):
@@ -117,9 +147,10 @@ def export_to_excel(db, start_date, end_date):
         "ID": r.id,
         "记录人": r.recorder,
         "工作类型": r.work_type,
-        "工作内容": r.work_content,  # 新增字段
+        "工作内容": r.work_content,
         "开始日期": r.start_date,
-        "结束日期": r.end_date
+        "结束日期": r.end_date,
+        "是否完成": "是" if r.is_completed else "否"  # 新增是否完成列
     } for r in records]
     
     df = pd.DataFrame(data)

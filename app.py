@@ -21,6 +21,10 @@ def get_db():
 
 # 检查JWT并自动续期
 def check_auth():
+    # 先检查URL参数中的token
+    if 'token' in st.query_params and 'jwt_token' not in st.session_state:
+        st.session_state.jwt_token = st.query_params["token"]
+    
     if 'jwt_token' not in st.session_state:
         return False
     
@@ -29,6 +33,13 @@ def check_auth():
     
     # Token无效或过期
     if not username:
+        # 尝试使用URL参数中的token
+        if 'token' in st.query_params:
+            username = db_utils.verify_jwt_token(st.query_params["token"])
+            if username:
+                st.session_state.jwt_token = st.query_params["token"]
+                st.session_state.username = username
+                return True
         return False
     
     # 检查Token是否需要续期（剩余时间小于5分钟）
@@ -43,9 +54,22 @@ def check_auth():
         if exp_time - time.time() < 300:  # 剩余时间小于5分钟
             # 生成新Token
             st.session_state.jwt_token = db_utils.generate_jwt_token(username)
-            st.experimental_set_query_params(token=st.session_state.jwt_token)
+            st.query_params["token"] = st.session_state.jwt_token
     except:
         pass
+    
+    # 确保username也在session state中
+    if 'username' not in st.session_state:
+        st.session_state.username = username
+        
+    # 检查前一天未完成的工作
+    if username:
+        yesterday = date.today() - timedelta(days=1)
+        db = next(db_utils.get_db_session())
+        uncompleted = db_utils.get_uncompleted_records(db, yesterday)
+        if uncompleted:
+            st.session_state.pending_records = uncompleted
+            st.session_state.show_pending_records = True
     
     return True
 
@@ -69,9 +93,9 @@ if not check_auth():
                     token = db_utils.generate_jwt_token(username)
                     st.session_state.jwt_token = token
                     st.session_state.username = username
-                    st.experimental_set_query_params(token=token)
+                    st.query_params["token"] = token
                     st.success("登录成功！")
-                    st.rerun()
+                    st.rerun()  # 使用rerun确保页面完全刷新
                 else:
                     st.error("用户名或密码错误")
     
@@ -117,7 +141,7 @@ st.title(f"工作记录管理系统 - 欢迎 {st.session_state.username}")
 if st.button("退出登录"):
     st.session_state.pop('jwt_token', None)
     st.session_state.pop('username', None)
-    st.experimental_set_query_params()
+    st.query_params.clear()  # 修改为使用query_params.clear()
     st.rerun()
 
 # 新增系统管理页面
@@ -238,10 +262,24 @@ with tab_main:
     st.subheader("今日值班人员")
     db = get_db()
     today_duty = db_utils.get_today_duty_rotation(db)
+    
     if today_duty:
-        cols = st.columns(4)
-        for i, person in enumerate(today_duty):
-            cols[i].success(f"值班人员 {i+1}: {person}")
+        st.success(f"今日值班人员: {today_duty[0]}")
+        
+        # 修改今日值班人员
+        with st.expander("修改"):
+            with st.form("edit_duty_form"):
+                new_duty = st.selectbox(
+                    "选择值班人员",
+                    options=db_utils.get_all_duty_personnel(db),
+                    index=db_utils.get_all_duty_personnel(db).index(today_duty[0]) if today_duty[0] in db_utils.get_all_duty_personnel(db) else 0,
+                    key="duty_select"
+                )
+                
+                if st.form_submit_button("保存修改"):
+                    db_utils.save_today_duty(db, [new_duty])
+                    st.success("今日值班人员已更新!")
+                    st.rerun()
     else:
         st.warning("请先添加值班人员")
 
@@ -250,49 +288,45 @@ with tab_main:
     tab1, tab2, tab3 = st.tabs(["添加记录", "查看/编辑记录", "数据统计"])
 
     with tab1:
-        # 添加新记录 - 增加工作内容字段
+        # 添加新记录
         with st.form("add_record_form"):
             db = get_db()
             today_duty = db_utils.get_today_duty_rotation(db)
-            if today_duty:
-                recorder = st.selectbox("记录人", options=today_duty)
-            else:
-                st.warning("请先添加值班人员")
-                recorder = None
-                
+            
+            recorder = st.text_input("记录人姓名")
             work_type = st.text_input("工作类型")
-            work_content = st.text_area("工作内容")  # 新增字段
+            work_content = st.text_area("工作内容")
             start_date = st.date_input("开始日期", value=date.today())
             end_date = st.date_input("结束日期", value=date.today())
             
             if st.form_submit_button("添加记录"):
-                if recorder and work_type and work_content and start_date <= end_date:  # 新增验证
+                if recorder and work_type and work_content and start_date <= end_date:
                     db = get_db()
-                    db_utils.create_record(db, recorder, work_type, work_content, start_date, end_date)  # 新增参数
+                    db_utils.create_record(db, recorder, work_type, work_content, start_date, end_date)
                     st.success("记录添加成功!")
                 else:
                     st.error("请填写完整信息且结束日期不能早于开始日期")
 
     with tab2:
-        # 查看和编辑记录 - 增加工作内容字段
+        # 查看和编辑记录
         db = get_db()
         records = db_utils.get_records(db)
         
         if records:
-            # 显示记录表格 - 增加工作内容列
+            # 显示记录表格 - 增加完成状态列
             df = pd.DataFrame([{
                 "ID": r.id,
                 "记录人": r.recorder,
                 "工作类型": r.work_type,
-                "工作内容": r.work_content,  # 新增列
+                "工作内容": r.work_content,
                 "开始日期": r.start_date,
-                "结束日期": r.end_date
+                "结束日期": r.end_date,
+                "已完成": "是" if r.is_completed else "否"  # 新增
             } for r in records])
             
             st.dataframe(df)
             
-            # 编辑记录 - 增加工作内容字段
-            st.subheader("编辑记录")
+            # 编辑记录
             record_id = st.number_input("输入要编辑的记录ID", min_value=1)
             if record_id:
                 record = next((r for r in records if r.id == record_id), None)
@@ -300,9 +334,10 @@ with tab_main:
                     with st.form("edit_form"):
                         new_recorder = st.text_input("记录人", value=record.recorder)
                         new_work_type = st.text_input("工作类型", value=record.work_type)
-                        new_work_content = st.text_area("工作内容", value=record.work_content)  # 新增字段
+                        new_work_content = st.text_area("工作内容", value=record.work_content)
                         new_start = st.date_input("开始日期", value=record.start_date)
                         new_end = st.date_input("结束日期", value=record.end_date)
+                        is_completed = st.checkbox("已完成", value=bool(record.is_completed))  # 新增
                         
                         if st.form_submit_button("更新记录"):
                             if new_start <= new_end:
@@ -312,16 +347,17 @@ with tab_main:
                                     record_id,
                                     recorder=new_recorder,
                                     work_type=new_work_type,
-                                    work_content=new_work_content,  # 新增参数
+                                    work_content=new_work_content,
                                     start_date=new_start,
-                                    end_date=new_end
+                                    end_date=new_end,
+                                    is_completed=1 if is_completed else 0  # 新增
                                 )
                                 st.success("记录更新成功!")
                                 st.rerun()
                             else:
                                 st.error("结束日期不能早于开始日期")
-                else:
-                    st.warning("找不到该ID的记录")
+            else:
+                st.warning("找不到该ID的记录")
             
             # 删除记录
             st.subheader("删除记录")
@@ -405,4 +441,20 @@ if st.button("导出为Excel"):
         )
     else:
         st.warning("所选时间段内没有记录")
+
+# 显示未完成的工作提醒
+if 'show_pending_records' in st.session_state and st.session_state.show_pending_records:
+    with st.expander("⚠️ 前一天未完成的工作"):
+        for record in st.session_state.pending_records:
+            st.write(f"工作类型: {record.work_type}, 内容: {record.work_content}")
+            if st.button(f"标记为已完成", key=f"complete_{record.id}"):
+                db = get_db()
+                db_utils.update_record(db, record.id, is_completed=1)
+                st.session_state.pending_records = [
+                    r for r in st.session_state.pending_records if r.id != record.id
+                ]
+                st.rerun()
+        st.session_state.show_pending_records = len(st.session_state.pending_records) > 0
+
+
 
