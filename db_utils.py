@@ -28,10 +28,11 @@ def get_db_session():
         db.close()
 
 # 工作记录CRUD操作
-def create_record(db, recorder, work_type, start_date, end_date):
+def create_record(db, recorder, work_type, work_content, start_date, end_date):
     new_record = WorkRecord(
         recorder=recorder,
         work_type=work_type,
+        work_content=work_content,  # 新增参数
         start_date=start_date,
         end_date=end_date
     )
@@ -91,6 +92,24 @@ def get_today_duty_rotation(db):
     # 循环获取4名值班人员
     return [all_personnel[(start_index + i) % len(all_personnel)] for i in range(4)]
 
+# 值班人员管理 - 新增编辑功能
+def update_duty_person(db, old_name, new_name):
+    person = db.query(DutyPersonnel).filter(DutyPersonnel.name == old_name).first()
+    if person:
+        person.name = new_name
+        db.commit()
+        return True
+    return False
+
+# 值班人员管理 - 新增删除功能
+def delete_duty_person(db, name):
+    person = db.query(DutyPersonnel).filter(DutyPersonnel.name == name).first()
+    if person:
+        db.delete(person)
+        db.commit()
+        return True
+    return False
+
 # 导出Excel
 def export_to_excel(db, start_date, end_date):
     records = get_records_by_date_range(db, start_date, end_date)
@@ -98,6 +117,7 @@ def export_to_excel(db, start_date, end_date):
         "ID": r.id,
         "记录人": r.recorder,
         "工作类型": r.work_type,
+        "工作内容": r.work_content,  # 新增字段
         "开始日期": r.start_date,
         "结束日期": r.end_date
     } for r in records]

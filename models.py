@@ -9,6 +9,7 @@ class WorkRecord(Base):
     id = Column(Integer, primary_key=True)
     recorder = Column(String(50), nullable=False)  # 记录人
     work_type = Column(String(50), nullable=False)  # 工作类型
+    work_content = Column(String(255), nullable=False)  # 新增：工作内容
     start_date = Column(Date, nullable=False)      # 开始日期
     end_date = Column(Date, nullable=False)        # 结束日期
 
