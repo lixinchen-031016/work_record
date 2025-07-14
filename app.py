@@ -55,7 +55,14 @@ tab1, tab2, tab3 = st.tabs(["添加记录", "查看/编辑记录", "数据统计
 with tab1:
     # 添加新记录
     with st.form("add_record_form"):
-        recorder = st.text_input("记录人")
+        db = get_db()
+        today_duty = db_utils.get_today_duty_rotation(db)
+        if today_duty:
+            recorder = st.selectbox("记录人", options=today_duty)
+        else:
+            st.warning("请先添加值班人员")
+            recorder = None
+            
         work_type = st.text_input("工作类型")
         start_date = st.date_input("开始日期", value=date.today())
         end_date = st.date_input("结束日期", value=date.today())
@@ -109,7 +116,7 @@ with tab2:
                                 end_date=new_end
                             )
                             st.success("记录更新成功!")
-                            st.experimental_rerun()
+                            st.rerun()
                         else:
                             st.error("结束日期不能早于开始日期")
             else:
