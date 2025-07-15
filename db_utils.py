@@ -225,3 +225,40 @@ def verify_jwt_token(token):
         return None  # Token已过期
     except jwt.InvalidTokenError:
         return None  # 无效Token
+
+# 新增：数据库备份功能
+import os
+import zipfile
+from io import BytesIO
+from datetime import datetime
+from sqlalchemy import text
+
+def backup_database(db):
+    """备份数据库到内存中的zip文件"""
+    # 获取所有表名
+    tables = db.execute(text("SHOW TABLES")).fetchall()
+    tables = [table[0] for table in tables]
+    
+    # 创建内存中的zip文件
+    zip_buffer = BytesIO()
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        for table in tables:
+            # 获取表结构
+            create_table = db.execute(text(f"SHOW CREATE TABLE {table}")).fetchone()[1]
+            
+            # 获取表数据
+            data = db.execute(text(f"SELECT * FROM {table}")).fetchall()
+            
+            # 生成SQL内容
+            sql_content = f"{create_table};\n\n"
+            for row in data:
+                values = ", ".join([f"'{str(v)}'" if v is not None else "NULL" for v in row])
+                sql_content += f"INSERT INTO {table} VALUES ({values});\n"
+            
+            # 将SQL添加到zip
+            zip_file.writestr(f"backup_{timestamp}/{table}.sql", sql_content)
+    
+    zip_buffer.seek(0)
+    return zip_buffer

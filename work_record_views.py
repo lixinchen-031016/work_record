@@ -7,6 +7,23 @@ from openpyxl.utils import get_column_letter
 import db_utils
 from datetime import date, timedelta
 
+# 在全局样式部分添加备份按钮样式
+st.markdown("""
+<style>
+    /* 备份按钮样式 */
+    .backup-btn {
+        background: linear-gradient(45deg, #4CAF50, #8BC34A);
+        color: white;
+        border-radius: 10px;
+        padding: 8px 15px;
+        font-weight: bold;
+    }
+    .backup-btn:hover {
+        transform: scale(1.05);
+    }
+</style>
+""", unsafe_allow_html=True)
+
 def show_work_record_page():
     """展示工作记录管理页面"""
     st.markdown("### 📝 工作记录管理")

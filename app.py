@@ -1,6 +1,8 @@
+
+
 import jwt
 import streamlit as st
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 import db_utils
 import pandas as pd
 import plotly.express as px
@@ -208,19 +210,18 @@ tab_main, tab_admin = st.tabs(["📊 工作记录", "⚙️ 系统管理"])
 
 with tab_admin:
     # 系统管理功能卡片导航
-    cols = st.columns(2)
+    cols = st.columns(3)  # 修改为3列，增加备份按钮
     with cols[0]:
         if st.button("👥 用户管理", use_container_width=True, key="user_mgmt_btn"):
             st.session_state.current_admin_view = "users"
     with cols[1]:
         if st.button("👤 值班管理", use_container_width=True, key="duty_mgmt_btn"):
             st.session_state.current_admin_view = "duty"
+    with cols[2]:
+        if st.button("💾 数据库备份", use_container_width=True, key="backup_btn"):
+            st.session_state.current_admin_view = "backup"
     
-    # 返回主界面按钮
-    if st.button("← 返回主界面", key="admin_return_btn", use_container_width=True):
-        st.session_state.pop('current_admin_view', None)
-        st.rerun()
-    
+
     # 根据选择显示对应功能
     if 'current_admin_view' not in st.session_state:
         st.session_state.current_admin_view = "users"
@@ -335,6 +336,24 @@ with tab_admin:
             else:
                 st.warning("暂无值班人员，请先添加")
 
+    elif st.session_state.current_admin_view == "backup":
+        # 数据库备份功能
+        with st.expander("数据库备份"):
+            st.subheader("数据库备份")
+            st.write("点击下方按钮备份当前数据库，系统将生成包含所有表结构和数据的SQL文件，并打包为ZIP下载。")
+            
+            if st.button("🔽 立即备份", use_container_width=True):
+                db = get_db()
+                backup_zip = db_utils.backup_database(db)
+                
+                st.download_button(
+                    label="📥 下载备份文件",
+                    data=backup_zip,
+                    file_name=f"work_record_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+                    mime="application/zip",
+                    use_container_width=True
+                )
+
 # 主工作记录页面优化布局
 with tab_main:
     # 值班人员显示优化为卡片式布局
@@ -415,6 +434,8 @@ with st.sidebar:
                         st.rerun()
         else:
             st.info("暂无待处理工作")
+
+
 
 
 
