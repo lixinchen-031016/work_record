@@ -395,7 +395,10 @@ with st.sidebar:
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
                             <strong class="icon-animation">📌 {record.work_type}</strong><br>
-                            <small>截止: {record.end_date}</small>
+                            <small>记录人: {record.recorder}\n</small>
+                            <small>工作类型: {record.work_type}\n</small>
+                            <small>工作内容: {record.work_content}\n</small>
+                            <small>截止时间: {record.end_date}</small>
                         </div>
                         <div style="font-size: 1.5rem; color: #ea580c;">❗</div>
                     </div>

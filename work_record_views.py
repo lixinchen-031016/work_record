@@ -82,13 +82,11 @@ def show_edit_records():
             "是否完成": "是" if r.is_completed else "否"
         } for r in records])
         
-        st.markdown('<div class="card">', unsafe_allow_html=True)
         st.dataframe(df, use_container_width=True, hide_index=True)
-        st.markdown('</div>', unsafe_allow_html=True)
         
         # 编辑和删除区域
         st.markdown("#### ✏️ 编辑记录")
-        record_options = {f"ID: {r.id} | {r.work_type} | {r.start_date}": r.id for r in records}
+        record_options = {f"ID: {r.id} | 工作类型: {r.work_type} | 工作内容: {r.work_content} |开始日期: {r.start_date}": r.id for r in records}
         selected_record_label = st.selectbox(
             "选择要编辑的记录",
             options=list(record_options.keys()),
@@ -221,7 +219,6 @@ def show_statistics():
 
 def show_todo_list():
     """展示待办事项"""
-    st.markdown('<div class="card">', unsafe_allow_html=True)
     db = next(db_utils.get_db_session())
     uncompleted_records = db_utils.get_uncompleted_records(db, date.today())
     if uncompleted_records:
@@ -229,8 +226,9 @@ def show_todo_list():
             with st.container(border=True):
                 cols = st.columns([4, 1])
                 cols[0].markdown(f"""
-                **工作类型**: {record.work_type}  
-                **内容**: {record.work_content}  
+                **记录人**: {record.recorder}\n
+                **工作类型**: {record.work_type}\n
+                **内容**: {record.work_content}\n 
                 **截止日期**: {record.end_date}
                 """)
                 
