@@ -11,18 +11,32 @@ def show_work_record_page():
     """展示工作记录管理页面"""
     st.markdown("### 📝 工作记录管理")
     
-    tab1, tab2, tab3, tab4 = st.tabs(["➕ 添加记录", "🔍 查看/编辑记录", "📈 数据统计", "📋 待办事项"])
+    # 功能卡片导航
+    cols = st.columns(4)
+    with cols[0]:
+        if st.button("➕ 添加记录", use_container_width=True, key="add_record_btn"):
+            st.session_state.current_work_record_view = "add"
+    with cols[1]:
+        if st.button("🔍 查看/编辑", use_container_width=True, key="edit_record_btn"):
+            st.session_state.current_work_record_view = "edit"
+    with cols[2]:
+        if st.button("📈 数据统计", use_container_width=True, key="stats_btn"):
+            st.session_state.current_work_record_view = "stats"
+    with cols[3]:
+        if st.button("📋 待办事项", use_container_width=True, key="todo_btn"):
+            st.session_state.current_work_record_view = "todo"
 
-    with tab1:
+    # 根据选择显示对应功能
+    if 'current_work_record_view' not in st.session_state:
+        st.session_state.current_work_record_view = "add"
+    
+    if st.session_state.current_work_record_view == "add":
         show_add_record_form()
-
-    with tab2:
+    elif st.session_state.current_work_record_view == "edit":
         show_edit_records()
-
-    with tab3:
+    elif st.session_state.current_work_record_view == "stats":
         show_statistics()
-
-    with tab4:
+    elif st.session_state.current_work_record_view == "todo":
         show_todo_list()
 
 def show_add_record_form():

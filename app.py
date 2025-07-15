@@ -207,113 +207,133 @@ if st.button("🚪 退出登录", key="logout_button", help="点击退出系统"
 tab_main, tab_admin = st.tabs(["📊 工作记录", "⚙️ 系统管理"])
 
 with tab_admin:
-    # 用户管理
-    with st.expander("用户管理"):
-        st.subheader("用户列表")
-        db = get_db()
-        users = db_utils.get_all_users(db)
-        
-        if users:
-            # 显示用户表格
-            user_df = pd.DataFrame([{
-                "ID": u.id,
-                "用户名": u.username,
-                "上次登录": u.last_login
-            } for u in users])
-            st.dataframe(user_df)
-        else:
-            st.warning("暂无用户")
-        
-        # 添加新用户
-        st.subheader("添加用户")
-        with st.form("add_user_form"):
-            new_username = st.text_input("用户名")
-            new_password = st.text_input("密码", type="password")
-            confirm_password = st.text_input("确认密码", type="password")
+    # 系统管理功能卡片导航
+    cols = st.columns(2)
+    with cols[0]:
+        if st.button("👥 用户管理", use_container_width=True, key="user_mgmt_btn"):
+            st.session_state.current_admin_view = "users"
+    with cols[1]:
+        if st.button("👤 值班管理", use_container_width=True, key="duty_mgmt_btn"):
+            st.session_state.current_admin_view = "duty"
+    
+    # 返回主界面按钮
+    if st.button("← 返回主界面", key="admin_return_btn", use_container_width=True):
+        st.session_state.pop('current_admin_view', None)
+        st.rerun()
+    
+    # 根据选择显示对应功能
+    if 'current_admin_view' not in st.session_state:
+        st.session_state.current_admin_view = "users"
+    
+    if st.session_state.current_admin_view == "users":
+        # 用户管理
+        with st.expander("用户管理"):
+            st.subheader("用户列表")
+            db = get_db()
+            users = db_utils.get_all_users(db)
             
-            if st.form_submit_button("添加"):
-                if new_password != confirm_password:
-                    st.error("两次输入的密码不一致")
-                else:
-                    db = get_db()
-                    user = db_utils.create_user(db, new_username, new_password)
-                    if user:
-                        st.success(f"用户 {new_username} 添加成功")
-                        st.rerun()
-                    else:
-                        st.error("用户名已存在")
-        
-        # 修改密码
-        st.subheader("修改密码")
-        if users:
-            usernames = [u.username for u in users]
-            selected_user = st.selectbox("选择用户", usernames)
-            with st.form("change_password_form"):
-                new_password = st.text_input("新密码", type="password")
-                confirm_password = st.text_input("确认新密码", type="password")
+            if users:
+                # 显示用户表格
+                user_df = pd.DataFrame([{
+                    "ID": u.id,
+                    "用户名": u.username,
+                    "上次登录": u.last_login
+                } for u in users])
+                st.dataframe(user_df)
+            else:
+                st.warning("暂无用户")
+            
+            # 添加新用户
+            st.subheader("添加用户")
+            with st.form("add_user_form"):
+                new_username = st.text_input("用户名")
+                new_password = st.text_input("密码", type="password")
+                confirm_password = st.text_input("确认密码", type="password")
                 
-                if st.form_submit_button("修改"):
+                if st.form_submit_button("添加"):
                     if new_password != confirm_password:
                         st.error("两次输入的密码不一致")
                     else:
                         db = get_db()
-                        if db_utils.update_password(db, selected_user, new_password):
-                            st.success("密码已更新")
+                        user = db_utils.create_user(db, new_username, new_password)
+                        if user:
+                            st.success(f"用户 {new_username} 添加成功")
                             st.rerun()
                         else:
-                            st.error("更新失败")
-        else:
-            st.info("没有用户可修改")
-        
-        # 删除用户
-        st.subheader("删除用户")
-        if users:
-            del_username = st.selectbox("选择要删除的用户", usernames, key="del_user_select")
-            if st.button("删除用户"):
-                db = get_db()
-                if db_utils.delete_user(db, del_username):
-                    st.success(f"用户 {del_username} 已删除")
-                    st.rerun()
-                else:
-                    st.error("删除失败")
-        else:
-            st.info("没有用户可删除")
-
-    # 值班人员管理 - 增强功能
-    with st.expander("值班人员管理"):
-        st.subheader("值班人员名单")
-        db = get_db()
-        duty_personnel = db_utils.get_all_duty_personnel(db)
-        
-        # 添加新值班人员
-        new_person = st.text_input("添加值班人员姓名", key="new_person")
-        if st.button("添加") and new_person:
-            if db_utils.add_duty_person(db, new_person):
-                st.success(f"已添加值班人员: {new_person}")
-                st.rerun()
-        
-        # 显示当前值班人员并支持编辑/删除
-        if duty_personnel:
-            st.write("当前值班人员名单:")
-            for person in duty_personnel:
-                cols = st.columns([3, 1, 1])
-                cols[0].write(person)
-                
-                # 编辑功能
-                with cols[1].form(f"edit_{person}"):
-                    new_name = st.text_input("新姓名", value=person, key=f"edit_name_{person}")
-                    if st.form_submit_button("更新"):
-                        if db_utils.update_duty_person(db, person, new_name):
-                            st.success(f"已更新: {person} → {new_name}")
-                            st.rerun()
-                
-                # 删除功能
-                if cols[2].button("删除", key=f"del_{person}"):
-                    if db_utils.delete_duty_person(db, person):
-                        st.success(f"已删除: {person}")
+                            st.error("用户名已存在")
+            
+            # 修改密码
+            st.subheader("修改密码")
+            if users:
+                usernames = [u.username for u in users]
+                selected_user = st.selectbox("选择用户", usernames)
+                with st.form("change_password_form"):
+                    new_password = st.text_input("新密码", type="password")
+                    confirm_password = st.text_input("确认新密码", type="password")
+                    
+                    if st.form_submit_button("修改"):
+                        if new_password != confirm_password:
+                            st.error("两次输入的密码不一致")
+                        else:
+                            db = get_db()
+                            if db_utils.update_password(db, selected_user, new_password):
+                                st.success("密码已更新")
+                                st.rerun()
+                            else:
+                                st.error("更新失败")
+            else:
+                st.info("没有用户可修改")
+            
+            # 删除用户
+            st.subheader("删除用户")
+            if users:
+                del_username = st.selectbox("选择要删除的用户", usernames, key="del_user_select")
+                if st.button("删除用户"):
+                    db = get_db()
+                    if db_utils.delete_user(db, del_username):
+                        st.success(f"用户 {del_username} 已删除")
                         st.rerun()
-        else:
-            st.warning("暂无值班人员，请先添加")
+                    else:
+                        st.error("删除失败")
+            else:
+                st.info("没有用户可删除")
+
+    elif st.session_state.current_admin_view == "duty":
+        # 值班人员管理
+        with st.expander("值班人员管理"):
+            st.subheader("值班人员名单")
+            db = get_db()
+            duty_personnel = db_utils.get_all_duty_personnel(db)
+            
+            # 添加新值班人员
+            new_person = st.text_input("添加值班人员姓名", key="new_person")
+            if st.button("添加") and new_person:
+                if db_utils.add_duty_person(db, new_person):
+                    st.success(f"已添加值班人员: {new_person}")
+                    st.rerun()
+            
+            # 显示当前值班人员并支持编辑/删除
+            if duty_personnel:
+                st.write("当前值班人员名单:")
+                for person in duty_personnel:
+                    cols = st.columns([3, 1, 1])
+                    cols[0].write(person)
+                    
+                    # 编辑功能
+                    with cols[1].form(f"edit_{person}"):
+                        new_name = st.text_input("新姓名", value=person, key=f"edit_name_{person}")
+                        if st.form_submit_button("更新"):
+                            if db_utils.update_duty_person(db, person, new_name):
+                                st.success(f"已更新: {person} → {new_name}")
+                                st.rerun()
+                    
+                    # 删除功能
+                    if cols[2].button("删除", key=f"del_{person}"):
+                        if db_utils.delete_duty_person(db, person):
+                            st.success(f"已删除: {person}")
+                            st.rerun()
+            else:
+                st.warning("暂无值班人员，请先添加")
 
 # 主工作记录页面优化布局
 with tab_main:
@@ -392,6 +412,8 @@ with st.sidebar:
                         st.rerun()
         else:
             st.info("暂无待处理工作")
+
+
 
 
 
