@@ -446,15 +446,12 @@ with tab_main:
             # 分页控件优化
             col1, col2 = st.columns([3, 1])
             with col2:
-                # 添加分页参数定义
                 page_size = 10  # 每页显示记录数
-                total_pages = (len(records) + page_size - 1) // page_size  # 计算总页数
+                total_pages = (len(records) + page_size - 1) // page_size  
                 page = st.number_input("页码", min_value=1, max_value=total_pages, value=1, key="record_page")
             
             # 表格容器优化
-            # 添加df定义 - 修复NameError的关键修改
             df = pd.DataFrame([{
-                "ID": r.id,
                 "记录人": r.recorder,
                 "工作类型": r.work_type,
                 "工作内容": r.work_content,
@@ -464,12 +461,19 @@ with tab_main:
             } for r in records])
             
             st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.dataframe(df, use_container_width=True)
+            st.dataframe(df, use_container_width=True, hide_index=True)
             st.markdown('</div>', unsafe_allow_html=True)
             
             # 编辑和删除区域优化
             st.markdown("#### ✏️ 编辑记录")
-            record_id = st.number_input("输入要编辑的记录ID", min_value=1)
+            record_options = {f"ID: {r.id} | {r.work_type} | {r.start_date}": r.id for r in records}
+            selected_record_label = st.selectbox(
+                "选择要编辑的记录",
+                options=list(record_options.keys()),
+                key="edit_record_select"
+            )
+            record_id = record_options[selected_record_label] if selected_record_label else None
+            
             if record_id:
                 record = next((r for r in records if r.id == record_id), None)
                 if record:
@@ -499,18 +503,24 @@ with tab_main:
                             else:
                                 st.error("结束日期不能早于开始日期")
             else:
-                st.warning("找不到该ID的记录")
+                st.warning("请选择一条记录进行编辑")
+
+            # 删除记录优化
+            st.subheader("🗑️ 删除记录")
+            del_record_label = st.selectbox(
+                "选择要删除的记录",
+                options=list(record_options.keys()),
+                key="delete_record_select"
+            )
+            del_id = record_options[del_record_label] if del_record_label else None
             
-            # 删除记录
-            st.subheader("删除记录")
-            del_id = st.number_input("输入要删除的记录ID", min_value=1)
-            if st.button("删除记录") and del_id:
+            if st.button("删除记录", key="delete_record_btn") and del_id:
                 db = get_db()
                 if db_utils.delete_record(db, del_id):
                     st.success("记录已删除!")
                     st.rerun()
                 else:
-                    st.error("删除失败，请检查ID")
+                    st.error("删除失败，请检查记录状态")
         else:
             st.info("暂无工作记录")
 
@@ -708,6 +718,10 @@ with st.sidebar:
                         st.rerun()
         else:
             st.info("暂无待处理工作")
+
+
+
+
 
 
 
