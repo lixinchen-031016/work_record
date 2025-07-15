@@ -1,13 +1,15 @@
+import jwt
 import streamlit as st
 from datetime import date, timedelta
 import db_utils
 import pandas as pd
-import plotly.express as px  # 替换matplotlib为Plotly
+import plotly.express as px
 from io import BytesIO
-import jwt
-import time
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
+from auth_views import show_login_register_page
+from auth_utils import verify_jwt_token, generate_jwt_token
+import time
 
 # 初始化数据库
 db_utils.init_db()
@@ -29,13 +31,13 @@ def check_auth():
         return False
     
     # 验证当前Token
-    username = db_utils.verify_jwt_token(st.session_state.jwt_token)
+    username = verify_jwt_token(st.session_state.jwt_token)
     
     # Token无效或过期
     if not username:
         # 尝试使用URL参数中的token
         if 'token' in st.query_params:
-            username = db_utils.verify_jwt_token(st.query_params["token"])
+            username = verify_jwt_token(st.query_params["token"])
             if username:
                 st.session_state.jwt_token = st.query_params["token"]
                 st.session_state.username = username
@@ -45,15 +47,15 @@ def check_auth():
     # 检查Token是否需要续期（剩余时间小于5分钟）
     try:
         payload = jwt.decode(
-            st.session_state.jwt_token, 
-            db_utils.SECRET_KEY, 
+            st.session_state.jwt_token,
+            db_utils.SECRET_KEY,
             algorithms=['HS256'],
             options={"verify_exp": False}  # 不验证过期时间
         )
         exp_time = payload['exp']
         if exp_time - time.time() < 300:  # 剩余时间小于5分钟
             # 生成新Token
-            st.session_state.jwt_token = db_utils.generate_jwt_token(username)
+            st.session_state.jwt_token = generate_jwt_token(username)
             st.query_params["token"] = st.session_state.jwt_token
     except:
         pass
@@ -75,74 +77,7 @@ def check_auth():
 
 # 登录/注册页面
 if not check_auth():
-    # 添加新的标题显示方式
-    st.markdown("## 📊 工作记录管理系统 - 登录")
-    
-    tab_login, tab_register, tab_forgot = st.tabs(["🔐 登录", "📝 注册", "🔑 找回密码"])
-    
-    with tab_login:
-        with st.form("login_form"):
-            username = st.text_input("用户名")
-            password = st.text_input("密码", type="password")
-            remember = st.checkbox("记住我")
-            
-            if st.form_submit_button("登录"):
-                db = get_db()
-                user = db_utils.verify_user(db, username, password)
-                if user:
-                    # 生成JWT Token
-                    token = db_utils.generate_jwt_token(username)
-                    st.session_state.jwt_token = token
-                    st.session_state.username = username
-                    st.query_params["token"] = token
-                    
-                    # 修改: 使用新方法获取所有未完成记录（不限定日期）
-                    uncompleted = db_utils.get_uncompleted_records(db)  # 删除日期参数
-                    if uncompleted:
-                        st.session_state.pending_records = uncompleted
-                        st.session_state.show_pending_records = True
-                        
-                        # 添加调试信息
-                        st.toast("⚠️ 检测到未完成工作，请及时处理！", icon='⚠️')
-                    
-                    st.success("登录成功！")
-                    st.rerun()
-                else:
-                    st.error("用户名或密码错误")
-    
-    with tab_register:
-        with st.form("register_form"):
-            new_username = st.text_input("用户名")
-            new_password = st.text_input("密码", type="password")
-            confirm_password = st.text_input("确认密码", type="password")
-            
-            if st.form_submit_button("注册"):
-                if new_password != confirm_password:
-                    st.error("两次输入的密码不一致")
-                else:
-                    db = get_db()
-                    user = db_utils.create_user(db, new_username, new_password)
-                    if user:
-                        st.success("注册成功！请登录")
-                    else:
-                        st.error("用户名已存在")
-    
-    with tab_forgot:
-        with st.form("forgot_form"):
-            forgot_username = st.text_input("用户名")
-            new_password = st.text_input("新密码", type="password")
-            confirm_password = st.text_input("确认新密码", type="password")
-            
-            if st.form_submit_button("重置密码"):
-                if new_password != confirm_password:
-                    st.error("两次输入的密码不一致")
-                else:
-                    db = get_db()
-                    if db_utils.update_password(db, forgot_username, new_password):
-                        st.success("密码已重置，请使用新密码登录")
-                    else:
-                        st.error("用户名不存在")
-    
+    show_login_register_page()
     st.stop()
 
 # 主界面重构
@@ -718,23 +653,3 @@ with st.sidebar:
                         st.rerun()
         else:
             st.info("暂无待处理工作")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
