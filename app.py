@@ -6,6 +6,8 @@ import plotly.express as px  # 替换matplotlib为Plotly
 from io import BytesIO
 import jwt
 import time
+from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.utils import get_column_letter
 
 # 初始化数据库
 db_utils.init_db()
@@ -151,46 +153,93 @@ st.markdown("""
 <style>
     /* 卡片式容器样式 */
     .card {
-        padding: 1.5rem;
-        border-radius: 1rem;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        padding: 2rem;
+        border-radius: 1.5rem;
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
         background-color: #ffffff;
-        margin: 1rem 0;
-        transition: transform 0.2s ease;
+        margin: 1.5rem 0;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
     }
     .card:hover {
-        transform: translateY(-5px);
+        transform: translateY(-8px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
     }
     
     /* 增强型按钮样式 */
     .stButton button {
-        border-radius: 0.75rem;
-        padding: 0.6rem 1.2rem;
-        font-weight: 600;
+        border-radius: 1rem;
+        padding: 0.8rem 1.5rem;
+        font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
-        background: linear-gradient(45deg, #4f46e5, #6366f1);
+        letter-spacing: 1px;
+        background: linear-gradient(45deg, #3b82f6, #6366f1, #8b5cf6);
         color: white;
         border: none;
-        transition: all 0.3s ease;
+        transition: all 0.4s ease;
+        box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
     }
     .stButton button:hover {
-        transform: scale(1.02);
-        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+        transform: scale(1.03);
+        box-shadow: 0 6px 18px rgba(59, 130, 246, 0.6);
     }
     
     /* 数据表格样式优化 */
     .stDataFrame {
-        border-radius: 0.75rem;
+        border-radius: 1rem;
         overflow: hidden;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+    }
+    .stDataFrame thead th {
+        background-color: #bfdbfe !important;
+        color: #1e40af !important;
+        font-weight: 600;
+    }
+    .stDataFrame tbody tr:nth-child(even) {
+        background-color: #efefef !important;
     }
     
-    /* 日期选择器样式 */
+    /* 日期选择器样式优化 */
     .stDateInput input {
+        border-radius: 1rem;
+        padding: 0.6rem 1.2rem;
+        border: 2px solid #bfdbfe;
+        font-size: 1rem;
+        transition: all 0.3s ease;
+    }
+    .stDateInput input:focus {
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    }
+    
+    /* 分页控件样式 */
+    .stNumberInput input {
         border-radius: 0.75rem;
-        padding: 0.5rem 1rem;
-        border: 1px solid #e5e7eb;
+        padding: 0.4rem 0.8rem;
+        border: 1px solid #d1d5db;
+        font-weight: 500;
+    }
+    
+    /* 提醒卡片样式优化 */
+    .reminder-card {
+        padding: 1rem;
+        border-radius: 1rem;
+        margin: 0.5rem 0;
+        background: linear-gradient(to right, #fef3c7, #fee3a1);
+        border-left: 5px solid #f59e0b;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    }
+    .reminder-card:hover {
+        transform: translateX(5px);
+    }
+    
+    /* 图标动画效果 */
+    .icon-animation {
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+        100% { transform: scale(1); }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -582,6 +631,37 @@ if st.button("📥 导出为Excel", use_container_width=True):
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='工作记录')
+            
+            # 获取工作表
+            worksheet = writer.sheets['工作记录']
+            
+            # 设置表头样式
+            header_font = Font(bold=True, color='FFFFFF')
+            header_fill = PatternFill(start_color='4F81BD', end_color='4F81BD', fill_type='solid')
+            alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            
+            # 应用表头样式
+            for cell in worksheet[1]:
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = alignment
+            
+            # 自动调整列宽
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = get_column_letter(column[0].column)
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = (max_length + 2)
+                worksheet.column_dimensions[column_letter].width = min(adjusted_width, 50)  # 限制最大宽度
+            
+            # 冻结首行
+            worksheet.freeze_panes = 'A2'
+
         output.seek(0)
         
         # 提供下载
@@ -594,7 +674,7 @@ if st.button("📥 导出为Excel", use_container_width=True):
     else:
         st.warning("所选时间段内没有记录")
 
-# 侧边栏提醒优化
+# 侧边栏提醒部分 - 移动到主界面之外
 with st.sidebar:
     # 添加: 强化提醒条件判断
     if 'show_pending_records' in st.session_state and st.session_state.show_pending_records:
@@ -607,18 +687,18 @@ with st.sidebar:
         if current_pending:
             for record in current_pending:
                 st.markdown(f"""
-                <div class="card" style="background-color: #fef9c3; border-left: 4px solid #eab308;">
+                <div class="reminder-card">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
-                            <strong>📌 {record.work_type}</strong><br>
+                            <strong class="icon-animation">📌 {record.work_type}</strong><br>
                             <small>截止: {record.end_date}</small>
                         </div>
-                        <div style="font-size: 1.2rem;">❗</div>
+                        <div style="font-size: 1.5rem; color: #ea580c;">❗</div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
                     
-                if st.button(f"✅ 标记为已完成", key=f"complete_{record.id}", use_container_width=True):
+                if st.button(f"✅ 标记为已完成", key=f"sidebar_complete_{record.id}", use_container_width=True):
                         db = get_db()
                         db_utils.update_record(db, record.id, is_completed=1)
                         st.session_state.pending_records = [
@@ -628,6 +708,14 @@ with st.sidebar:
                         st.rerun()
         else:
             st.info("暂无待处理工作")
+
+
+
+
+
+
+
+
 
 
 
