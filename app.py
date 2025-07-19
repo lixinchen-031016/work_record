@@ -1,18 +1,15 @@
 
 
-import jwt
-import streamlit as st
-from datetime import date, timedelta, datetime
-import db_utils
-import pandas as pd
-import plotly.express as px
-from io import BytesIO
-from openpyxl.styles import Font, PatternFill, Alignment
-from openpyxl.utils import get_column_letter
-from auth_views import show_login_register_page
-from auth_utils import verify_jwt_token, generate_jwt_token
 import time
+from datetime import date, timedelta, datetime
 
+import jwt
+import pandas as pd
+import streamlit as st
+
+import db_utils
+from auth_utils import verify_jwt_token, generate_jwt_token
+from auth_views import show_login_register_page
 from work_record_views import show_work_record_page, show_export_section
 
 # 初始化数据库
