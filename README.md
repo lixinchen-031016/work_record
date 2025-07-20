@@ -256,43 +256,6 @@ CREATE TABLE users (
 ```
 
 
-## API文档
-
-### 认证接口
-- **POST /login**  
-  用户登录认证
-  ```json
-
-  {
-    "username": "admin",
-    "password": "admin"
-  }
-  
-
-  {
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "expires_in": 1800
-  }
-  ```
-
-
-### 工作记录接口
-- **GET /records?start_date=&end_date=**  
-  获取工作记录列表
-  ```json
-  [
-    {
-      "id": 1,
-      "recorder": "张三",
-      "work_type": "开发",
-      "work_content": "实现登录模块",
-      "start_date": "2023-10-01",
-      "end_date": "2023-10-05",
-      "is_completed": 1
-    }
-  ]
-  ```
-
 ## 部署说明
 
 ### 生产环境建议
