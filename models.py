@@ -13,6 +13,8 @@ class WorkRecord(Base):
     start_date = Column(Date, nullable=False)      # 开始日期
     end_date = Column(Date, nullable=False)        # 结束日期
     is_completed = Column(Integer, default=0)      # 是否完成(0未完成，1已完成)
+    # 添加优先级字段 (1=低, 2=中, 3=高)
+    priority = Column(Integer, default=2)          # 任务优先级
 
 class DutyPersonnel(Base):
     __tablename__ = 'duty_personnel'

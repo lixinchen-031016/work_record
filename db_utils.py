@@ -1,9 +1,9 @@
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 import bcrypt
 import jwt
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from models import Base, WorkRecord, DutyPersonnel, User, DailyDuty
@@ -30,14 +30,15 @@ def get_db_session():
         db.close()
 
 # 工作记录CRUD操作
-def create_record(db, recorder, work_type, work_content, start_date, end_date):
+def create_record(db, recorder, work_type, work_content, start_date, end_date, priority=2):
     new_record = WorkRecord(
         recorder=recorder,
         work_type=work_type,
         work_content=work_content,
         start_date=start_date,
         end_date=end_date,
-        is_completed=0  # 新增：默认未完成
+        is_completed=0,  # 新增：默认未完成
+        priority=priority  # 新增：任务优先级
     )
     db.add(new_record)
     db.commit()
@@ -55,10 +56,14 @@ def update_record(db, record_id, **kwargs):
         return record
     return None
 
-# 新增：获取未完成的工作记录
+# 新增：获取未完成的工作记录，优化查询逻辑
 def get_uncompleted_records(db, date=None):
     """获取未完成的工作记录，优化查询逻辑"""
     query = db.query(WorkRecord).filter(WorkRecord.is_completed == 0)
+    
+    # 如果提供了日期参数，则查询截止到该日期的未完成记录
+    if date:
+        query = query.filter(WorkRecord.end_date <= date)
     
     return query.order_by(WorkRecord.end_date.asc()).all()
 
@@ -75,6 +80,24 @@ def get_records_by_date_range(db, start_date, end_date):
         WorkRecord.start_date >= start_date,
         WorkRecord.end_date <= end_date
     ).all()
+
+# 新增：根据优先级和完成状态搜索记录
+def search_records(db, priority=None, is_completed=None, recorder=None, work_type=None):
+    query = db.query(WorkRecord)
+    
+    if priority is not None:
+        query = query.filter(WorkRecord.priority == priority)
+    
+    if is_completed is not None:
+        query = query.filter(WorkRecord.is_completed == is_completed)
+    
+    if recorder:
+        query = query.filter(WorkRecord.recorder.like(f"%{recorder}%"))
+    
+    if work_type:
+        query = query.filter(WorkRecord.work_type.like(f"%{work_type}%"))
+    
+    return query.all()
 
 # 值班人员管理
 def add_duty_person(db, name):
@@ -152,7 +175,8 @@ def export_to_excel(db, start_date, end_date):
         "工作内容": r.work_content,
         "开始日期": r.start_date,
         "结束日期": r.end_date,
-        "是否完成": "是" if r.is_completed else "否"  # 新增是否完成列
+        "是否完成": "是" if r.is_completed else "否",  # 新增是否完成列
+        "优先级": ["低", "中", "高"][r.priority-1] if r.priority in [1, 2, 3] else "未知"  # 新增优先级列
     } for r in records]
     
     df = pd.DataFrame(data)
@@ -232,13 +256,12 @@ def verify_jwt_token(token):
 import zipfile
 from io import BytesIO
 from datetime import datetime
-from sqlalchemy import text
 
 def backup_database(db):
-    """备份数据库到内存中的zip文件"""
+    """备份数据库到内存中的zip文件，使用参数化查询防止SQL注入"""
     # 获取所有表名
-    tables = db.execute(text("SHOW TABLES")).fetchall()
-    tables = [table[0] for table in tables]
+    tables_result = db.execute(text("SHOW TABLES")).fetchall()
+    tables = [table[0] for table in tables_result]
     
     # 创建内存中的zip文件
     zip_buffer = BytesIO()
@@ -246,16 +269,27 @@ def backup_database(db):
     
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
         for table in tables:
-            # 获取表结构
-            create_table = db.execute(text(f"SHOW CREATE TABLE {table}")).fetchone()[1]
+            # 获取表结构，使用参数化查询防止注入
+            create_table_result = db.execute(text("SHOW CREATE TABLE :table"), {"table": table}).fetchone()
+            create_table = create_table_result[1] if create_table_result else ""
             
-            # 获取表数据
-            data = db.execute(text(f"SELECT * FROM {table}")).fetchall()
+            # 获取表数据，使用参数化查询
+            data_result = db.execute(text("SELECT * FROM :table"), {"table": table}).fetchall()
+            data = data_result if data_result else []
             
             # 生成SQL内容
             sql_content = f"{create_table};\n\n"
             for row in data:
-                values = ", ".join([f"'{str(v)}'" if v is not None else "NULL" for v in row])
+                # 转义特殊字符，防止SQL注入
+                escaped_values = []
+                for v in row:
+                    if v is None:
+                        escaped_values.append("NULL")
+                    else:
+                        # 对字符串值进行转义
+                        escaped_val = str(v).replace("'", "''")  # 转义单引号
+                        escaped_values.append(f"'{escaped_val}'")
+                values = ", ".join(escaped_values)
                 sql_content += f"INSERT INTO {table} VALUES ({values});\n"
             
             # 将SQL添加到zip

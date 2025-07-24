@@ -69,50 +69,84 @@ def show_add_record_form():
         work_content = st.text_area("工作内容")
         start_date = st.date_input("开始日期", value=date.today())
         end_date = st.date_input("结束日期", value=date.today())
+        # 添加优先级选择
+        priority = st.selectbox("优先级", options=[("低", 1), ("中", 2), ("高", 3)], format_func=lambda x: x[0], index=1)
         
         if st.form_submit_button("添加记录"):
             if recorder and work_type and work_content and start_date <= end_date:
                 db = next(db_utils.get_db_session())
-                db_utils.create_record(db, recorder, work_type, work_content, start_date, end_date)
+                db_utils.create_record(db, recorder, work_type, work_content, start_date, end_date, priority[1])
                 st.success("记录添加成功!")
             else:
                 st.error("请填写完整信息且结束日期不能早于开始日期")
 
+
 def show_edit_records():
     """展示编辑记录界面"""
     db = next(db_utils.get_db_session())
-    records = db_utils.get_records(db)
+
+    # 添加搜索和过滤功能
+    with st.expander("🔍 搜索和过滤"):
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            priority_filter = st.selectbox("优先级", options=[("全部", None), ("低", 1), ("中", 2), ("高", 3)],
+                                           format_func=lambda x: x[0])
+        with col2:
+            completion_filter = st.selectbox("完成状态", options=[("全部", None), ("未完成", 0), ("已完成", 1)],
+                                             format_func=lambda x: x[0])
+        with col3:
+            recorder_filter = st.text_input("记录人")
+        with col4:
+            work_type_filter = st.text_input("工作类型")
+
+        # 应用过滤器
+        records = db_utils.search_records(
+            db,
+            priority=priority_filter[1],
+            is_completed=completion_filter[1],
+            recorder=recorder_filter,
+            work_type=work_type_filter
+        )
     
+    # 如果没有搜索结果，显示所有记录
+    if not records:
+        records = db_utils.get_records(db)
+        if priority_filter[1] or completion_filter[1] or recorder_filter or work_type_filter:
+            st.info("没有找到匹配的记录，显示所有记录")
+
     if records:
         # 分页控件
         col1, col2 = st.columns([3, 1])
         with col2:
             page_size = 10
-            total_pages = (len(records) + page_size - 1) // page_size  
+            total_pages = (len(records) + page_size - 1) // page_size
             page = st.number_input("页码", min_value=1, max_value=total_pages, value=1, key="record_page")
-        
-        # 表格展示
+
+        # 表格展示，添加优先级显示
         df = pd.DataFrame([{
             "记录人": r.recorder,
             "工作类型": r.work_type,
             "工作内容": r.work_content,
             "开始日期": r.start_date,
             "结束日期": r.end_date,
-            "是否完成": "是" if r.is_completed else "否"
+            "是否完成": "是" if r.is_completed else "否",
+            "优先级": ["低", "中", "高"][r.priority - 1] if r.priority in [1, 2, 3] else "未知"  # 添加优先级显示
         } for r in records])
-        
+
         st.dataframe(df, use_container_width=True, hide_index=True)
-        
+
         # 编辑和删除区域
         st.markdown("#### ✏️ 编辑记录")
-        record_options = {f"ID: {r.id} | 工作类型: {r.work_type} | 工作内容: {r.work_content} |开始日期: {r.start_date}": r.id for r in records}
+        record_options = {
+            f"ID: {r.id} | 工作类型: {r.work_type} | 工作内容: {r.work_content} |开始日期: {r.start_date}": r.id for r
+            in records}
         selected_record_label = st.selectbox(
             "选择要编辑的记录",
             options=list(record_options.keys()),
             key="edit_record_select"
         )
         record_id = record_options[selected_record_label] if selected_record_label else None
-        
+
         if record_id:
             record = next((r for r in records if r.id == record_id), None)
             if record:
@@ -123,19 +157,26 @@ def show_edit_records():
                     new_start = st.date_input("开始日期", value=record.start_date)
                     new_end = st.date_input("结束日期", value=record.end_date)
                     is_completed = st.checkbox("已完成", value=bool(record.is_completed))
-                    
+                    # 添加优先级编辑
+                    priority_options = [("低", 1), ("中", 2), ("高", 3)]
+                    current_priority_index = [p[1] for p in priority_options].index(
+                        record.priority) if record.priority in [1, 2, 3] else 1
+                    new_priority = st.selectbox("优先级", options=priority_options, format_func=lambda x: x[0],
+                                                index=current_priority_index)
+
                     if st.form_submit_button("更新记录"):
                         if new_start <= new_end:
                             db = next(db_utils.get_db_session())
                             db_utils.update_record(
-                                db, 
+                                db,
                                 record_id,
                                 recorder=new_recorder,
                                 work_type=new_work_type,
                                 work_content=new_work_content,
                                 start_date=new_start,
                                 end_date=new_end,
-                                is_completed=1 if is_completed else 0
+                                is_completed=1 if is_completed else 0,
+                                priority=new_priority[1]  # 更新优先级
                             )
                             st.success("记录更新成功!")
                             st.rerun()
@@ -152,7 +193,7 @@ def show_edit_records():
             key="delete_record_select"
         )
         del_id = record_options[del_record_label] if del_record_label else None
-        
+
         if st.button("删除记录", key="delete_record_btn") and del_id:
             db = next(db_utils.get_db_session())
             if db_utils.delete_record(db, del_id):
@@ -235,21 +276,48 @@ def show_statistics():
             fig3.update_xaxes(tickformat="%Y-%m-%d")
             
             st.plotly_chart(fig3, use_container_width=True)
+            
+        # 新增：优先级分布统计
+        st.markdown("#### ⚡ 任务优先级分布")
+        priority_map = {1: "低", 2: "中", 3: "高"}
+        priorities = [priority_map.get(r.priority, "未知") for r in records]
+        priority_counts = pd.Series(priorities).value_counts()
+        
+        fig4 = px.bar(
+            x=priority_counts.index,
+            y=priority_counts.values,
+            color=priority_counts.index,
+            color_discrete_map={"低": "#4CAF50", "中": "#FFC107", "高": "#F44336"},
+            title="任务优先级分布"
+        )
+        fig4.update_layout(
+            xaxis_title="优先级",
+            yaxis_title="任务数量",
+            showlegend=False
+        )
+        st.plotly_chart(fig4, use_container_width=True)
 
 def show_todo_list():
     """展示待办事项"""
     db = next(db_utils.get_db_session())
     uncompleted_records = db_utils.get_uncompleted_records(db, date.today())
     if uncompleted_records:
-        for record in uncompleted_records:
+        # 按优先级排序显示
+        sorted_records = sorted(uncompleted_records, key=lambda x: x.priority, reverse=True)
+        for record in sorted_records:
             with st.container(border=True):
+                # 根据优先级设置不同的边框颜色
+                priority_colors = {1: "#4CAF50", 2: "#FFC107", 3: "#F44336"}  # 低-绿, 中-黄, 高-红
+                priority_labels = {1: "低", 2: "中", 3: "高"}
+                
                 cols = st.columns([4, 1])
                 cols[0].markdown(f"""
                 **记录人**: {record.recorder}\n
                 **工作类型**: {record.work_type}\n
                 **内容**: {record.work_content}\n 
-                **截止日期**: {record.end_date}
-                """)
+                **截止日期**: {record.end_date}\n
+                **优先级**: <span style="color:{priority_colors.get(record.priority, '#000')}; font-weight:bold">{priority_labels.get(record.priority, '未知')}</span>
+                """, unsafe_allow_html=True)
                 
                 if cols[1].button("标记完成", key=f"complete_{record.id}"):
                     db_utils.update_record(db, record.id, is_completed=1)

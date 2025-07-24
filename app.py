@@ -1,5 +1,3 @@
-
-
 import time
 from datetime import date, timedelta, datetime
 
@@ -177,6 +175,24 @@ st.markdown("""
         50% { transform: scale(1.1); }
         100% { transform: scale(1); }
     }
+    
+    /* 高优先级任务样式 */
+    .high-priority {
+        border-left: 5px solid #f44336 !important;
+        background: linear-gradient(to right, #ffebee, #ffcdd2) !important;
+    }
+    
+    /* 中优先级任务样式 */
+    .medium-priority {
+        border-left: 5px solid #ff9800 !important;
+        background: linear-gradient(to right, #fff3e0, #ffe0b2) !important;
+    }
+    
+    /* 低优先级任务样式 */
+    .low-priority {
+        border-left: 5px solid #4caf50 !important;
+        background: linear-gradient(to right, #e8f5e8, #c8e6c9) !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -340,16 +356,20 @@ with tab_admin:
             st.write("点击下方按钮备份当前数据库，系统将生成包含所有表结构和数据的SQL文件，并打包为ZIP下载。")
             
             if st.button("🔽 立即备份", use_container_width=True):
-                db = get_db()
-                backup_zip = db_utils.backup_database(db)
-                
-                st.download_button(
-                    label="📥 下载备份文件",
-                    data=backup_zip,
-                    file_name=f"work_record_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
-                    mime="application/zip",
-                    use_container_width=True
-                )
+                try:
+                    db = get_db()
+                    backup_zip = db_utils.backup_database(db)
+                    
+                    st.download_button(
+                        label="📥 下载备份文件",
+                        data=backup_zip,
+                        file_name=f"work_record_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+                        mime="application/zip",
+                        use_container_width=True
+                    )
+                    st.success("备份文件已生成，请点击下载按钮保存！")
+                except Exception as e:
+                    st.error(f"备份过程中出现错误: {str(e)}")
 
 # 主工作记录页面优化布局
 with tab_main:
@@ -405,16 +425,25 @@ with st.sidebar:
         current_pending = db_utils.get_uncompleted_records(db)
         
         if current_pending:
-            for record in current_pending:
+            # 按优先级排序，高优先级在前
+            sorted_pending = sorted(current_pending, key=lambda x: x.priority, reverse=True)
+            
+            for record in sorted_pending:
+                # 根据优先级设置不同的样式
+                priority_classes = {1: "low-priority", 2: "medium-priority", 3: "high-priority"}
+                priority_labels = {1: "低", 2: "中", 3: "高"}
+                priority_emojis = {1: "⏬", 2: "⏺️", 3: "🔺"}
+                
                 st.markdown(f"""
-                <div class="reminder-card">
+                <div class="reminder-card {priority_classes.get(record.priority, '')}">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
                             <strong class="icon-animation">📌 {record.work_type}</strong><br>
                             <small>记录人: {record.recorder}\n</small>
                             <small>工作类型: {record.work_type}\n</small>
                             <small>工作内容: {record.work_content}\n</small>
-                            <small>截止时间: {record.end_date}</small>
+                            <small>截止时间: {record.end_date}\n</small>
+                            <small>优先级: {priority_labels.get(record.priority, '未知')} {priority_emojis.get(record.priority, '')}</small>
                         </div>
                         <div style="font-size: 1.5rem; color: #ea580c;">❗</div>
                     </div>
@@ -432,9 +461,28 @@ with st.sidebar:
         else:
             st.info("暂无待处理工作")
 
-
-
-
+    # 新增：高优先级任务提醒
+    st.markdown("### 🔴 高优先级任务")
+    db = get_db()
+    high_priority_records = db_utils.search_records(db, priority=3, is_completed=0)  # 获取高优先级未完成任务
+    
+    if high_priority_records:
+        for record in high_priority_records:
+            st.markdown(f"""
+            <div class="reminder-card high-priority">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong>📌 {record.work_type}</strong><br>
+                        <small>记录人: {record.recorder}\n</small>
+                        <small>工作内容: {record.work_content}\n</small>
+                        <small>截止时间: {record.end_date}</small>
+                    </div>
+                    <div style="font-size: 1.5rem; color: #f44336;">🔺</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.info("暂无高优先级任务")
 
 
 
